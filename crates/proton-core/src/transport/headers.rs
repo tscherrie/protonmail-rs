@@ -23,13 +23,13 @@ pub fn build_headers(auth: &AuthState, req: &Request) -> HeaderMap {
         }
     }
 
-    if let Some(uid) = &auth.uid {
+    if let Some(uid) = auth.uid.as_ref().filter(|_| !req.omit_uid) {
         if let Ok(v) = HeaderValue::from_str(uid) {
             h.insert(HeaderName::from_static("x-pm-uid"), v);
         }
     }
 
-    if let Some(token) = &auth.access {
+    if let Some(token) = auth.access.as_ref().filter(|_| !req.omit_auth) {
         if let Ok(v) = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret())) {
             h.insert(reqwest::header::AUTHORIZATION, v);
         }
@@ -108,6 +108,18 @@ mod tests {
         assert!(h.get("x-pm-uid").is_none());
         assert!(h.get("authorization").is_none());
         assert!(h.get("user-agent").is_none());
+    }
+
+    #[test]
+    fn initial_auth_omits_both_session_headers_but_refresh_retains_uid() {
+        let initial = build_headers(&auth(), &Request::post("/auth/v4/info").unauthenticated());
+        assert!(!initial.contains_key("authorization"));
+        assert!(!initial.contains_key("x-pm-uid"));
+        assert!(!initial.contains_key("x-enforce-unauthsession"));
+        assert_eq!(initial.get("x-pm-appversion").unwrap(), "Other");
+        let refresh = build_headers(&auth(), &Request::post("/auth/v4/refresh").omit_auth());
+        assert!(!refresh.contains_key("authorization"));
+        assert_eq!(refresh.get("x-pm-uid").unwrap(), "UID123");
     }
 
     #[test]

@@ -27,6 +27,7 @@ async fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Login => commands::auth::login(&ctx).await,
         Command::Logout => commands::auth::logout(&ctx).await,
+        Command::RefreshSession => commands::auth::refresh_session(&ctx).await,
         Command::Whoami => commands::auth::whoami(&ctx).await,
         Command::Messages { cmd } => commands::messages::run(&ctx, cmd).await,
         Command::Conversations { cmd } => commands::conversations::run(&ctx, cmd).await,
@@ -67,6 +68,20 @@ mod tests {
     fn verify_clap_command() {
         // Guards against derive macro misconfiguration.
         Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn refresh_session_accepts_profile_and_json() {
+        let cli = parse(&[
+            "protonmail-cli",
+            "refresh-session",
+            "--profile",
+            "service",
+            "--json",
+        ]);
+        assert!(matches!(cli.command, Command::RefreshSession));
+        assert_eq!(cli.profile, "service");
+        assert!(cli.json);
     }
 
     #[test]

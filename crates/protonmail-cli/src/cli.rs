@@ -127,6 +127,8 @@ pub enum Command {
     Login,
     /// Revoke the server session and clear local state.
     Logout,
+    /// Renew the saved session using its refresh token, without logging in again.
+    RefreshSession,
     /// Print the primary email address of the active session.
     Whoami,
     /// Message operations.

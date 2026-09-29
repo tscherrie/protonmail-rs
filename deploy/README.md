@@ -38,6 +38,20 @@ CAPTCHA, changed account credentials, disabled accounts and incompatible Proton
 API changes can still require intervention. No software can promise permanent
 unattended access against those provider-side changes.
 
+The client sends a descriptive `protonmail-rs/<version>` User-Agent by default.
+Authentication uses the canonical `/auth/v4/info`, `/auth/v4`, and
+`/auth/v4/2fa` sequence used by Proton's Go library, without a preliminary
+anonymous session. Authentication errors record only presence flags for
+verification metadata; tokens and raw response bodies are not logged.
+An error from one client alone does not establish an account-wide restriction.
+
+For an explicit renewal check, `protonmail-cli --profile PROFILE --json
+refresh-session` resumes the saved session and renews its tokens without
+password login or recovery. Run it with the same encrypted-store configuration
+and service account, while the MCP service is stopped: concurrent processes
+must not independently rotate the same profile's refresh token. Restart the
+service afterward and verify a mailbox read to test persisted-session resume.
+
 The search index is **plaintext SQLite**, not encrypted. For hosted deployment,
 mount its directory as a private `tmpfs` with `noswap`; disable process swapping
 and core dumps, as in the sample unit. The index must be rebuilt after restart.

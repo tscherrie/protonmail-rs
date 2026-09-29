@@ -27,6 +27,21 @@ pub struct ApiError {
 }
 
 impl ApiError {
+    /// Presence-only diagnostics: never return response values or challenge tokens.
+    pub fn redacted_details(&self) -> serde_json::Value {
+        let body: serde_json::Value = serde_json::from_str(&self.raw_body).unwrap_or_default();
+        let details = body.get("Details").and_then(|v| v.as_object());
+        let has = |key: &str| details.is_some_and(|d| d.contains_key(key));
+        serde_json::json!({
+            "details_present": details.is_some(),
+            "human_verification_token_present": has("HumanVerificationToken"),
+            "human_verification_methods_present": has("HumanVerificationMethods"),
+            "web_url_present": has("WebUrl"),
+            "missing_scopes_present": has("MissingScopes"),
+            "actions_present": has("Actions"),
+        })
+    }
+
     /// Map to a CLI process exit code (mirrors the Go reference).
     pub fn exit_code(&self) -> i32 {
         match self.http_status {
@@ -165,5 +180,29 @@ mod tests {
         );
         assert_eq!(Error::Ambiguous(3).exit_code(), 4);
         assert_eq!(Error::Other("x".into()).exit_code(), 1);
+    }
+
+    #[test]
+    fn redacted_diagnostics_never_include_response_values() {
+        let mut error = api(422);
+        error.raw_body = serde_json::json!({
+            "Details": {
+                "HumanVerificationToken": "secret-token",
+                "HumanVerificationMethods": ["captcha"],
+                "WebUrl": "https://verify.proton.me/?token=secret-token",
+                "UnknownPrivateField": "private-value"
+            }
+        })
+        .to_string();
+        let summary = error.redacted_details();
+        assert_eq!(summary["human_verification_token_present"], true);
+        assert_eq!(summary["web_url_present"], true);
+        assert_eq!(summary["missing_scopes_present"], false);
+        let serialized = summary.to_string();
+        assert!(!serialized.contains("secret-token"));
+        assert!(!serialized.contains("private-value"));
+        assert!(!serialized.contains("UnknownPrivateField"));
+        error.raw_body = "not JSON".into();
+        assert_eq!(error.redacted_details()["details_present"], false);
     }
 }

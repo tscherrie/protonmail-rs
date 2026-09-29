@@ -43,6 +43,8 @@ pub struct Request {
     pub skip_refresh: bool,
     /// Do not attach `Authorization` (refresh endpoint).
     pub omit_auth: bool,
+    /// Do not attach a session UID (initial SRP requests).
+    pub omit_uid: bool,
     /// Send `x-enforce-unauthsession: true` (session creation).
     pub enforce_unauth: bool,
 }
@@ -59,6 +61,7 @@ impl Request {
             hv: None,
             skip_refresh: false,
             omit_auth: false,
+            omit_uid: false,
             enforce_unauth: false,
         }
     }
@@ -107,6 +110,12 @@ impl Request {
     /// Do not send the `Authorization` header (for the refresh endpoint).
     pub fn omit_auth(mut self) -> Self {
         self.omit_auth = true;
+        self
+    }
+    /// Start authentication without inheriting a prior UID or bearer token.
+    pub fn unauthenticated(mut self) -> Self {
+        self.omit_auth = true;
+        self.omit_uid = true;
         self
     }
     /// Send the `x-enforce-unauthsession` header (for session creation).
@@ -192,6 +201,7 @@ impl HttpClient {
     /// Create a client sharing the given auth state (so refresh updates propagate).
     pub fn with_state(base_url: impl Into<String>, auth: Arc<RwLock<AuthState>>) -> Self {
         let client = reqwest::Client::builder()
+            .user_agent(concat!("protonmail-rs/", env!("CARGO_PKG_VERSION")))
             .cookie_store(true)
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(std::time::Duration::from_secs(15))
@@ -249,10 +259,7 @@ impl HttpClient {
 
     async fn execute_once(&self, req: &Request) -> Result<Response> {
         let auth = self.auth.read().await.clone();
-        let mut hdrs = headers::build_headers(&auth, req);
-        if req.omit_auth {
-            hdrs.remove(reqwest::header::AUTHORIZATION);
-        }
+        let hdrs = headers::build_headers(&auth, req);
         let url = self.url(req);
         let body_kind = match &req.body {
             Body::Empty => "empty",
@@ -286,7 +293,7 @@ impl HttpClient {
     }
 
     /// Refresh the access/refresh tokens via `POST /auth/v4/refresh`.
-    async fn refresh_tokens(&self) -> Result<()> {
+    pub(crate) async fn refresh_tokens(&self) -> Result<()> {
         let (uid, refresh) = {
             let a = self.auth.read().await;
             match (&a.uid, &a.refresh) {
@@ -434,7 +441,21 @@ impl Doer for HttpClient {
                     continue;
                 }
                 Detected::Hv(chal) => return Err(Error::HumanVerification(chal)),
-                Detected::Api(e) => return Err(Error::Api(e)),
+                Detected::Api(e) => {
+                    if matches!(
+                        work.path.as_str(),
+                        "/auth/v4/info"
+                            | "/auth/v4"
+                            | "/auth/v4/2fa"
+                            | "/auth/v4/sessions"
+                            | "/core/v4/auth/info"
+                            | "/core/v4/auth"
+                            | "/core/v4/auth/2fa"
+                    ) {
+                        tracing::warn!(path = %work.path, http_status = e.http_status, code = e.code, details = %e.redacted_details(), "Proton authentication request rejected");
+                    }
+                    return Err(Error::Api(e));
+                }
             }
         }
     }
@@ -454,6 +475,45 @@ mod tests {
 
     fn client(base: &str) -> HttpClient {
         HttpClient::new(base, "Other")
+    }
+
+    #[tokio::test]
+    async fn identifies_client_by_default_and_honors_explicit_user_agent() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/default-agent"))
+            .and(wiremock::matchers::header(
+                "user-agent",
+                concat!("protonmail-rs/", env!("CARGO_PKG_VERSION")),
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"Code":1000,"Value":7})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/custom-agent"))
+            .and(wiremock::matchers::header(
+                "user-agent",
+                "explicit-test-client",
+            ))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"Code":1000,"Value":7})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        let http = client(&server.uri());
+        http.decode::<ValueResp>(Request::get("/default-agent"))
+            .await
+            .unwrap();
+        http.set_user_agent("explicit-test-client".into()).await;
+        http.decode::<ValueResp>(Request::get("/custom-agent"))
+            .await
+            .unwrap();
     }
 
     #[derive(Deserialize, Debug)]
@@ -524,6 +584,8 @@ mod tests {
 
     #[tokio::test]
     async fn refreshes_then_retries_on_401() {
+        use crate::session::{MemoryStore, SecretStore, Session};
+
         let server = MockServer::start().await;
         // First protected call → 401.
         Mock::given(method("GET"))
@@ -553,7 +615,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let c = client(&server.uri());
+        let mut c = client(&server.uri());
+        let store = Arc::new(MemoryStore::new());
+        let persisted = store.clone();
+        c.set_refresh_persist(Arc::new(move |uid, access, refresh| {
+            assert_eq!(uid, "uid");
+            Session::save_tokens(persisted.as_ref(), access, refresh).unwrap();
+        }));
         c.set_tokens(
             "uid".into(),
             SecretString::from("old-acc"),
@@ -565,6 +633,16 @@ mod tests {
         // Tokens were rotated.
         let a = c.auth.read().await;
         assert_eq!(a.access.as_ref().unwrap().expose_secret(), "new-acc");
+        assert_eq!(a.refresh.as_ref().unwrap().expose_secret(), "new-ref");
+        // The automatic retry path also persists both rotated credentials.
+        assert_eq!(
+            store.get("access_token").unwrap().as_deref(),
+            Some("new-acc")
+        );
+        assert_eq!(
+            store.get("refresh_token").unwrap().as_deref(),
+            Some("new-ref")
+        );
     }
 
     #[tokio::test]

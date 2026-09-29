@@ -1,4 +1,4 @@
-//! Authentication commands: login, logout, whoami.
+//! Authentication commands: login, logout, refresh-session, whoami.
 
 use crate::cli::Ctx;
 use crate::commands::{prompt_line, resume};
@@ -65,6 +65,18 @@ pub async fn logout(ctx: &Ctx) -> Result<()> {
         render::json_out(&json!({ "status": "ok" }));
     } else {
         println!("Logged out");
+    }
+    Ok(())
+}
+
+pub async fn refresh_session(ctx: &Ctx) -> Result<()> {
+    // Intentionally bypass the CLI's automated resume/login recovery helper.
+    let client = Client::resume(&ctx.profile).await?;
+    client.refresh_session().await?;
+    if ctx.json {
+        render::json_out(&json!({ "status": "ok" }));
+    } else {
+        println!("Session refreshed");
     }
     Ok(())
 }

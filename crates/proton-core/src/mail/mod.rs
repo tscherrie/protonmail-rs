@@ -177,6 +177,12 @@ impl Client {
         })
     }
 
+    /// Renew the current session with its refresh token, without SRP login.
+    /// Uses the same token persistence callback as automatic session refresh.
+    pub async fn refresh_session(&self) -> Result<()> {
+        self.http.refresh_tokens().await
+    }
+
     /// Revoke the server session and clear local state.
     pub async fn logout(&self) -> Result<()> {
         let _ = auth::logout(&self.http).await;
