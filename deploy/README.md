@@ -1,4 +1,4 @@
-# Private, unattended hosting
+# Authenticated, unattended hosting
 
 This fork preserves all 56 mail tools. `--allow-writes` enables unattended
 operations; an explicit `confirm:false` always requests a preview. The flag is
@@ -7,9 +7,20 @@ agents: token holders can read, send and permanently delete mail.
 
 HTTP requires `--http-token-file`, uses constant-time token comparison, and
 rejects browser Origin headers. Bind the backend to loopback and publish it
-through a private HTTPS reverse proxy (for example Tailscale Serve). Set
-`PROTON_MCP_ALLOWED_HOST` to its exact hostname and port. Do not use
-an unauthenticated public proxy or Tailscale Funnel for this service.
+through an HTTPS reverse proxy (for example Tailscale Serve). Set
+`PROTON_MCP_ALLOWED_HOST` to its exact hostname and port, or a comma-separated
+list of exact authorities when both private and public listeners are used.
+Wildcards, URLs, user information and invalid ports are rejected.
+
+With the operator's authorization, Tailscale Funnel can expose the bearer-protected
+MCP to agents outside the tailnet. Funnel provides public HTTPS connectivity;
+the MCP server still checks the bearer token on every request. Keep the backend
+on loopback and retain the browser-origin and exact-host checks. Funnel supports
+public ports 443, 8443 and 10000; 9443 can remain a private Serve listener.
+For example, when both listeners use the same backend, configure
+`PROTON_MCP_ALLOWED_HOST=node.example.ts.net:9443,node.example.ts.net:10000`.
+Verify rejection of missing/incorrect tokens and authenticated MCP operation
+through a public internet connection before sharing the endpoint with an agent.
 
 `PROTON_ATTACHMENT_ROOT` confines attachment downloads. `dest_dir` is a relative
 subdirectory, symlinks are rejected, and existing files are never overwritten.

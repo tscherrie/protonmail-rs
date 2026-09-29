@@ -194,6 +194,32 @@ impl ServerHandler for ProtonMail {}
 // HTTP transport
 // --------------------------------------------------------------------------
 
+/// Parse exact reverse-proxy authorities without weakening host validation.
+fn allowed_http_hosts(value: &str) -> anyhow::Result<Vec<String>> {
+    value
+        .split(',')
+        .map(|entry| {
+            let host = entry.trim();
+            anyhow::ensure!(
+                !host.is_empty()
+                    && !host.contains(['*', '@', '/', '\\', '?', '#'])
+                    && !host.chars().any(char::is_whitespace),
+                "allowed hosts must be exact authorities"
+            );
+            let authority = host
+                .parse::<axum::http::uri::Authority>()
+                .map_err(|_| anyhow::anyhow!("allowed hosts must be exact authorities"))?;
+            anyhow::ensure!(
+                !authority.host().is_empty()
+                    && (authority.host() == host
+                        || authority.port_u16().is_some_and(|port| port != 0)),
+                "allowed hosts must have a valid hostname and port"
+            );
+            Ok(host.to_owned())
+        })
+        .collect()
+}
+
 /// Serve the MCP server over Streamable HTTP, mounted at `/mcp`.
 pub async fn serve_http(server: ProtonMail, addr: &str, token: Arc<String>) -> anyhow::Result<()> {
     use rmcp::transport::streamable_http_server::{
@@ -201,12 +227,8 @@ pub async fn serve_http(server: ProtonMail, addr: &str, token: Arc<String>) -> a
     };
 
     let mut config = StreamableHttpServerConfig::default();
-    if let Ok(host) = std::env::var("PROTON_MCP_ALLOWED_HOST") {
-        anyhow::ensure!(
-            !host.is_empty() && !host.contains('/') && !host.contains('*'),
-            "allowed host must be an exact authority"
-        );
-        config.allowed_hosts.push(host);
+    if let Ok(hosts) = std::env::var("PROTON_MCP_ALLOWED_HOST") {
+        config.allowed_hosts.extend(allowed_http_hosts(&hosts)?);
     }
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),
@@ -228,6 +250,45 @@ pub async fn serve_http(server: ProtonMail, addr: &str, token: Arc<String>) -> a
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exact_http_hosts_support_private_and_public_listeners() {
+        assert_eq!(
+            allowed_http_hosts("gx10-1.example.ts.net:9443, gx10-1.example.ts.net:10000").unwrap(),
+            vec!["gx10-1.example.ts.net:9443", "gx10-1.example.ts.net:10000"]
+        );
+        assert_eq!(
+            allowed_http_hosts("example.com").unwrap(),
+            vec!["example.com"]
+        );
+        assert_eq!(
+            allowed_http_hosts("[::1]:18765").unwrap(),
+            vec!["[::1]:18765"]
+        );
+    }
+
+    #[test]
+    fn http_hosts_reject_wildcards_urls_and_malformed_entries() {
+        for value in [
+            "",
+            ",example.com",
+            "example.com,",
+            "*.example.com",
+            "https://example.com",
+            "example.com/mcp",
+            "user@example.com",
+            "example.com?query",
+            "example.com#fragment",
+            "exam ple.com",
+            "example.com\\mcp",
+            "example.com:65536",
+            "example.com:0",
+            "example.com:not-a-port",
+            "example.com\n:443",
+        ] {
+            assert!(allowed_http_hosts(value).is_err(), "accepted {value:?}");
+        }
+    }
 
     use rmcp::handler::server::wrapper::Parameters;
     use serde_json::json;
