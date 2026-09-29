@@ -1,4 +1,4 @@
-//! `index_cache` — build the local encrypted-search index over a folder's bodies.
+//! `index_cache` — build the local plaintext-search index over a folder's bodies.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData};
@@ -23,7 +23,7 @@ pub struct IndexCacheParams {
 impl ProtonMail {
     #[tool(
         name = "index_cache",
-        description = "Build the local encrypted-search index by decrypting and indexing message bodies in a folder. Populates the index used by search_local."
+        description = "Build the local plaintext-search index by decrypting and indexing message bodies in a folder. Populates the index used by search_local."
     )]
     pub async fn index_cache(
         &self,

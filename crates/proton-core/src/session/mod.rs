@@ -1,6 +1,7 @@
 //! Session model + on-disk persistence (non-secret metadata file + secrets in
 //! the `SecretStore`).
 
+mod sealed_store;
 pub mod secret_store;
 
 pub use secret_store::{KeyringStore, MemoryStore, SecretStore};
@@ -110,6 +111,7 @@ impl Session {
         tokens: &Tokens,
         skp: &SecretString,
     ) -> Result<()> {
+        sealed_store::validate_profile(profile)?;
         let dir = paths.sessions_dir();
         std::fs::create_dir_all(&dir)?;
         set_mode(&dir, 0o700)?;
@@ -137,6 +139,7 @@ impl Session {
         profile: &str,
         store: &dyn SecretStore,
     ) -> Result<Option<LoadedSession>> {
+        sealed_store::validate_profile(profile)?;
         let file = paths.session_file(profile);
         let bytes = match std::fs::read(&file) {
             Ok(b) => b,
@@ -179,6 +182,25 @@ impl Session {
         store.delete(K_REFRESH)?;
         store.delete(K_SKP)?;
         Ok(())
+    }
+}
+
+/// Select OS keychain storage or an explicitly configured encrypted service store.
+pub fn configured_store(profile: &str) -> Result<std::sync::Arc<dyn SecretStore>> {
+    sealed_store::validate_profile(profile)?;
+    match (
+        std::env::var_os("PROTON_SECRET_DIR"),
+        std::env::var_os("PROTON_SECRET_KEY_FILE"),
+    ) {
+        (Some(dir), Some(key)) => Ok(std::sync::Arc::new(sealed_store::SealedStore::new(
+            Path::new(&dir),
+            Path::new(&key),
+            profile,
+        )?)),
+        (None, None) => Ok(std::sync::Arc::new(KeyringStore::new(profile))),
+        _ => Err(Error::Session(
+            "both secret directory and key file must be configured".into(),
+        )),
     }
 }
 

@@ -359,8 +359,13 @@ impl Client {
                         m
                     }
                 };
-                let verifier = SRPAuth::generate_verifier_with_pgp(password, None, &modulus)
-                    .map_err(|e| Error::Srp(format!("EO verifier: {e}")))?;
+                let verifier = SRPAuth::generate_verifier(
+                    &crate::crypto::ModulusVerifier,
+                    password,
+                    None,
+                    &modulus,
+                )
+                .map_err(|e| Error::Srp(format!("EO verifier: {e}")))?;
                 let v: SRPVerifierB64 = verifier.into();
                 let (_fresh, token) = crypto::new_session_key(provider)?;
                 let enc_token = crypto::encrypt_text_with_password(provider, password, &token)?;

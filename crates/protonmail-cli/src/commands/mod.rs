@@ -18,7 +18,7 @@ use std::io::{Read, Write};
 
 /// Resume a saved session for the given profile.
 pub async fn resume(profile: &str) -> Result<Client> {
-    Client::resume(profile).await
+    Client::resume_automated(profile).await
 }
 
 /// Resolve a body argument: `-` reads stdin, otherwise the literal text.

@@ -7,6 +7,7 @@ pub mod export;
 pub mod filters;
 pub mod organize;
 pub mod read;
+mod recovery;
 pub mod send;
 pub mod sync;
 
@@ -14,7 +15,7 @@ use crate::api;
 use crate::auth;
 use crate::crypto::{self, keys::KeyStore};
 use crate::error::{Error, Result};
-use crate::session::{KeyringStore, Paths, SecretStore, Session, Tokens};
+use crate::session::{Paths, SecretStore, Session, Tokens};
 use crate::transport::HttpClient;
 use secrecy::SecretString;
 use std::collections::HashMap;
@@ -66,7 +67,9 @@ impl Client {
 
     fn wire_refresh(http: &mut HttpClient, store: Arc<dyn SecretStore>) {
         http.set_refresh_persist(Arc::new(move |_uid, access, refresh| {
-            let _ = Session::save_tokens(store.as_ref(), access, refresh);
+            if Session::save_tokens(store.as_ref(), access, refresh).is_err() {
+                tracing::error!("failed to persist refreshed session tokens");
+            }
         }));
     }
 
@@ -80,7 +83,7 @@ impl Client {
             .app_version
             .clone()
             .unwrap_or_else(|| DEFAULT_APP_VERSION.to_string());
-        let store: Arc<dyn SecretStore> = Arc::new(KeyringStore::new(opts.profile.clone()));
+        let store: Arc<dyn SecretStore> = crate::session::configured_store(&opts.profile)?;
         let mut http = HttpClient::new(base_url.clone(), app_version.clone());
         if let Some(ua) = &opts.user_agent {
             http.set_user_agent(ua.clone()).await;
@@ -139,7 +142,7 @@ impl Client {
     /// Resume a saved session and unlock keys using the stored `skp`.
     pub async fn resume(profile: &str) -> Result<Client> {
         tracing::info!(target: "proton_core::mail", profile, "resume: loading saved session");
-        let store: Arc<dyn SecretStore> = Arc::new(KeyringStore::new(profile.to_string()));
+        let store: Arc<dyn SecretStore> = crate::session::configured_store(profile)?;
         let paths = Paths::system()?;
         let loaded = Session::load(&paths, profile, store.as_ref())?.ok_or(Error::Unauthorized)?;
         tracing::debug!(target: "proton_core::mail", uid = %loaded.session.uid, "resume: session found; fetching user + addresses, unlocking keys");

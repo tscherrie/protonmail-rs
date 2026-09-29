@@ -15,8 +15,8 @@ keywords = ["proton", "protonmail", "email", "openpgp", "mcp"]
 categories = ["email", "command-line-utilities", "api-bindings"]
 
 [workspace.dependencies]
-proton-crypto = { version = "0.12", default-features = false, features = ["rustpgp"] }
-proton-srp = "0.8"
+proton-crypto = { version = "0.12", default-features = false, features = ["gopgp"] }
+proton-srp = { version = "0.8", default-features = false }
 rmcp = { version = "2", features = ["server", "transport-io", "macros"] }
 reqwest = { version = "0.13", default-features = false, features = ["json", "cookies", "rustls", "multipart"] }
 tokio = { version = "1", features = ["full"] }
@@ -44,3 +44,6 @@ ammonia = "4"
 
 [workspace.dependencies.wiremock]
 version = "0.6"
+
+[patch.crates-io]
+gopenpgp-sys = { path = "vendor/gopenpgp-sys" }

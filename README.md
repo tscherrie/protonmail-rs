@@ -1,3 +1,16 @@
+# Hardened deployment fork
+
+This fork adds authenticated HTTP hosting and unattended session recovery.
+See [deployment documentation](deploy/README.md) for the security model,
+service setup and provider-side limits. It uses Proton's GopenPGP backend;
+it is no longer a pure-Rust build. All 56 upstream mail tools remain available.
+
+The upstream description below is retained as historical documentation.
+The local search database is plaintext; the hosted configuration stores it on
+private, non-swappable temporary memory rather than persistent disk.
+
+---
+
 <h1 align="center">Welcome to protonmail-rs 👋</h1>
 
 > An unofficial, pure-Rust Proton Mail client — library, CLI, and MCP server.
@@ -120,7 +133,7 @@ counts         [--conversations]
 export         --out <dir> [--folder all] [--max 100]                # write messages to .eml files
 watch          [--interval 30] [--folder <f>]                        # continuous cache sync until ^C
 sync           [--backfill <folder>]                                 # one-shot event-stream sync
-index          [--folder all] [--max-pages --page-size]              # build local encrypted FTS index
+index          [--folder all] [--max-pages --page-size]              # build local plaintext FTS index
 search         <query> [--limit 25]                                  # query the local FTS index (offline)
 ```
 `<REF>` = exact message ID or free text (unique search match); `<ID>` = exact id. `--json` on any
@@ -178,7 +191,7 @@ PROTON_TEST_USER=… PROTON_TEST_PASSWORD=… [PROTON_TEST_TOTP=…] [PROTON_TES
 - TLS via rustls. Verbose logs exclude all secrets and plaintext.
 
 ## Scope / deferred
-Implemented: full mail (read/threads, search, send/reply/forward incl. **PGP-external** and **encrypted-outside**, attachments, organize), **drafts**, **Sieve filters**, **mail settings (read) + spam/ham/unsubscribe/empty-folder/snooze**, **contacts (read) + addresses**, **event-sync + SQLite cache**, **local encrypted full-text search**, **HTML sanitization** of message bodies, CLI, MCP, CAPTCHA, verbose logging.
+Implemented: full mail (read/threads, search, send/reply/forward incl. **PGP-external** and **encrypted-outside**, attachments, organize), **drafts**, **Sieve filters**, **mail settings (read) + spam/ham/unsubscribe/empty-folder/snooze**, **contacts (read) + addresses**, **event-sync + SQLite cache**, **local plaintext full-text search**, **HTML sanitization** of message bodies, CLI, MCP, CAPTCHA, verbose logging.
 
 **Not implemented (deliberately, to avoid shipping untested code):**
 - **Key Transparency** (epoch / VRF / certificate-transparency chain) — `proton-crypto` exposes only result types; the full verification is a large standalone effort. Recipient keys are trusted as the server returns them.

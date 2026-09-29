@@ -1,0 +1,17 @@
+[package]
+name = "gopenpgp-sys"
+version = "0.3.7"
+edition.workspace = true
+
+license-file = "LICENSE"
+description = "Rust bindings to gopenpgp"
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+hex = { workspace = true }
+zeroize = { workspace = true }
+
+[build-dependencies]
+bindgen = "0.72"

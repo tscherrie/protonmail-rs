@@ -1,6 +1,6 @@
 [package]
 name = "proton-core"
-description = "Unofficial pure-Rust Proton Mail SDK: SRP authentication, OpenPGP end-to-end crypto, and the mail API (transport, send/read, drafts, filters, contacts, local encrypted search)."
+description = "Unofficial pure-Rust Proton Mail SDK: SRP authentication, OpenPGP end-to-end crypto, and the mail API (transport, send/read, drafts, filters, contacts, local plaintext search)."
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -35,6 +35,10 @@ futures.workspace = true
 urlencoding.workspace = true
 rusqlite.workspace = true
 ammonia.workspace = true
+
+aes-gcm = "0.10.3"
+rand = "0.8"
+totp-rs = "6"
 
 [dev-dependencies]
 wiremock.workspace = true

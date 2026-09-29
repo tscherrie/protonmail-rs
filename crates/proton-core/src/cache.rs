@@ -94,6 +94,9 @@ impl Cache {
     /// Remove a message (and its label memberships) from the cache.
     pub fn delete_message(&self, id: &str) -> Result<()> {
         self.conn
+            .execute("DELETE FROM msg_fts WHERE id=?1", [id])
+            .map_err(map)?;
+        self.conn
             .execute("DELETE FROM messages WHERE id=?1", [id])
             .map_err(map)?;
         self.conn

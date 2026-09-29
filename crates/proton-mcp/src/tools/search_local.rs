@@ -1,4 +1,4 @@
-//! `search_local` — full-text search the local encrypted index.
+//! `search_local` — full-text search the local plaintext index.
 
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData};
@@ -21,7 +21,7 @@ pub struct SearchLocalParams {
 impl ProtonMail {
     #[tool(
         name = "search_local",
-        description = "Full-text search the local encrypted index (decrypted bodies; private + offline). Run `sync_cache` first to populate the index."
+        description = "Full-text search the local plaintext index (decrypted bodies; private + offline). Run `sync_cache` first to populate the index."
     )]
     pub async fn search_local(
         &self,

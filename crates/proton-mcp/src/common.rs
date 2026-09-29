@@ -18,7 +18,7 @@ pub(crate) type Out = Json<serde_json::Map<String, Value>>;
 /// It runs when the server allows writes globally, or the call explicitly
 /// passes `confirm: true`. Otherwise the tool returns a dry-run preview.
 pub(crate) fn should_perform(allow_writes: bool, confirm: Option<bool>) -> bool {
-    allow_writes || confirm == Some(true)
+    confirm.unwrap_or(allow_writes)
 }
 
 /// Truncate `s` to at most `max` characters, appending an ellipsis if cut.

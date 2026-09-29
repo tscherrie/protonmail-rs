@@ -1,6 +1,6 @@
 [package]
 name = "protonmail-cli"
-description = "Unofficial command-line client for Proton Mail (login, read/send with end-to-end OpenPGP, drafts, filters, contacts, local encrypted search), built on proton-core."
+description = "Unofficial command-line client for Proton Mail (login, read/send with end-to-end OpenPGP, drafts, filters, contacts, local plaintext search), built on proton-core."
 edition.workspace = true
 version.workspace = true
 license.workspace = true

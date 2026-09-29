@@ -5,7 +5,7 @@ pub mod types;
 use crate::error::{Error, Result};
 use crate::session::Tokens;
 use crate::transport::{Doer, HttpClient, Request};
-use proton_srp::{RPGPVerifier, SRPAuth, SRPProofB64, SrpHashVersion};
+use proton_srp::{SRPAuth, SRPProofB64, SrpHashVersion};
 use secrecy::{ExposeSecret, SecretString};
 use types::{AuthInfo, AuthResponse, SessionResp};
 
@@ -59,7 +59,7 @@ pub async fn login(
     let version = SrpHashVersion::try_from(info.version)
         .map_err(|e| Error::Srp(format!("unsupported SRP version {}: {e}", info.version)))?;
     tracing::debug!(target: "proton_core::auth", "login step 3/4: verifying signed modulus + generating client proof (proton-srp)");
-    let verifier = RPGPVerifier::default();
+    let verifier = crate::crypto::ModulusVerifier;
     let srp = SRPAuth::new(
         &verifier,
         Some(username),

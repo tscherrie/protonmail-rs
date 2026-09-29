@@ -193,6 +193,9 @@ impl HttpClient {
     pub fn with_state(base_url: impl Into<String>, auth: Arc<RwLock<AuthState>>) -> Self {
         let client = reqwest::Client::builder()
             .cookie_store(true)
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(std::time::Duration::from_secs(15))
+            .timeout(std::time::Duration::from_secs(90))
             .build()
             .expect("reqwest client");
         HttpClient {
@@ -256,7 +259,7 @@ impl HttpClient {
             Body::Json(_) => "json",
             Body::Bytes(_) => "bytes",
         };
-        tracing::debug!(target: "proton_core::http", method = %req.method, %url, body = body_kind, hv = req.hv.is_some(), "→ request");
+        tracing::debug!(target: "proton_core::http", method = %req.method, path = %req.path, body = body_kind, hv = req.hv.is_some(), "→ request");
         tracing::trace!(target: "proton_core::http", headers = ?hdrs.keys().map(|k| k.as_str()).collect::<Vec<_>>(), "request headers");
 
         let mut builder = self.client.request(req.method.clone(), &url).headers(hdrs);

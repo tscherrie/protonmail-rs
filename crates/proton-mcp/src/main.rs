@@ -6,6 +6,7 @@
 //! to serve over Streamable HTTP instead.
 
 mod common;
+mod http_auth;
 mod server;
 mod tools;
 
@@ -40,6 +41,10 @@ struct Args {
     #[arg(long, value_name = "ADDR")]
     http: Option<String>,
 
+    /// Required for HTTP: file containing a random bearer token.
+    #[arg(long, requires = "http")]
+    http_token_file: Option<std::path::PathBuf>,
+
     /// Verbose logging to stderr (-v debug, -vv trace core, -vvv trace all).
     /// `RUST_LOG` overrides. Logs login, crypto, and every HTTP call.
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
@@ -52,7 +57,7 @@ async fn main() -> Result<()> {
 
     // Logs MUST go to stderr: stdout is the MCP protocol channel on stdio.
     // Default (no -v) is INFO; -v debug, -vv trace core, -vvv trace all.
-    proton_core::init_tracing(args.verbose.max(1));
+    proton_core::init_tracing(args.verbose);
 
     let server = ProtonMail::new(args.profile.clone(), args.allow_writes);
 
@@ -64,7 +69,12 @@ async fn main() -> Result<()> {
                 %addr,
                 "starting proton-mcp on Streamable HTTP (mounted at /mcp)"
             );
-            server::serve_http(server, &addr).await?;
+            let token_path = args
+                .http_token_file
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("--http-token-file is required for HTTP"))?;
+            let token = http_auth::load_token(token_path)?;
+            server::serve_http(server, &addr, token).await?;
         }
         None => {
             tracing::info!(

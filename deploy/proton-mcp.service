@@ -1,0 +1,51 @@
+[Unit]
+Description=Authenticated Proton Mail MCP
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=proton-mcp
+Group=proton-mcp
+StateDirectory=proton-mcp
+StateDirectoryMode=0700
+RuntimeDirectory=proton-mcp
+RuntimeDirectoryMode=0700
+WorkingDirectory=/var/lib/proton-mcp
+LoadCredentialEncrypted=store-key:/etc/proton-mcp/store-key.cred
+LoadCredentialEncrypted=bootstrap:/etc/proton-mcp/bootstrap.cred
+LoadCredentialEncrypted=http-token:/etc/proton-mcp/http-token.cred
+Environment=PROTON_SECRET_KEY_FILE=%d/store-key
+Environment=PROTON_BOOTSTRAP_FILE=%d/bootstrap
+Environment=PROTON_RECOVERY_STATE_FILE=/var/lib/proton-mcp/recovery.json
+Environment=PROTON_SECRET_DIR=/var/lib/proton-mcp/secrets
+Environment=PROTON_ATTACHMENT_ROOT=/var/lib/proton-mcp/attachments
+Environment=XDG_CONFIG_HOME=/var/lib/proton-mcp/config
+Environment=XDG_CACHE_HOME=/var/cache/proton-mcp
+Environment=RUST_LOG=warn
+ExecStart=/opt/proton-mcp/bin/proton-mcp --profile service --allow-writes --http 127.0.0.1:18765 --http-token-file %d/http-token
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+LimitCORE=0
+MemoryMax=2G
+MemorySwapMax=0
+# Add a host-specific TemporaryFileSystem= drop-in with the service UID/GID,
+# mode=0700,noswap,size=256M. This keeps the plaintext search cache off disk.
+
+[Install]
+WantedBy=multi-user.target

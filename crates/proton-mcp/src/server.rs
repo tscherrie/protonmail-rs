@@ -10,7 +10,10 @@
 //! sums their per-tool routers together and wires up the shared state and
 //! transport.
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::{tool_handler, ErrorData, ServerHandler};
@@ -32,6 +35,7 @@ pub(crate) struct AppState {
     pub(crate) client: Mutex<Option<Client>>,
     /// Session profile to resume (created via `protonmail-cli login`).
     profile: String,
+    needs_resume: AtomicBool,
     /// When true, destructive tools execute without requiring `confirm: true`.
     pub(crate) allow_writes: bool,
 }
@@ -111,6 +115,7 @@ impl ProtonMail {
             state: Arc::new(AppState {
                 client: Mutex::new(None),
                 profile,
+                needs_resume: AtomicBool::new(false),
                 allow_writes,
             }),
             tool_router,
@@ -122,8 +127,12 @@ impl ProtonMail {
     pub(crate) fn map_err(&self, e: proton_core::Error) -> ErrorData {
         use proton_core::Error as E;
         match &e {
-            E::Unauthorized => not_authenticated(&self.state.profile),
+            E::Unauthorized => {
+                self.state.needs_resume.store(true, Ordering::Relaxed);
+                not_authenticated(&self.state.profile)
+            }
             E::Api(api) if matches!(api.http_status, 401 | 403) => {
+                self.state.needs_resume.store(true, Ordering::Relaxed);
                 not_authenticated(&self.state.profile)
             }
             _ => ErrorData::internal_error(e.to_string(), None),
@@ -132,8 +141,11 @@ impl ProtonMail {
 
     /// Ensure the lazily-resumed client is present in `slot`.
     pub(crate) async fn ensure(&self, slot: &mut Option<Client>) -> Result<(), ErrorData> {
+        if self.state.needs_resume.swap(false, Ordering::Relaxed) {
+            *slot = None;
+        }
         if slot.is_none() {
-            let client = Client::resume(&self.state.profile)
+            let client = Client::resume_automated(&self.state.profile)
                 .await
                 .map_err(|e| self.map_err(e))?;
             *slot = Some(client);
@@ -183,17 +195,27 @@ impl ServerHandler for ProtonMail {}
 // --------------------------------------------------------------------------
 
 /// Serve the MCP server over Streamable HTTP, mounted at `/mcp`.
-pub async fn serve_http(server: ProtonMail, addr: &str) -> anyhow::Result<()> {
+pub async fn serve_http(server: ProtonMail, addr: &str, token: Arc<String>) -> anyhow::Result<()> {
     use rmcp::transport::streamable_http_server::{
-        session::local::LocalSessionManager, StreamableHttpService,
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
     };
 
+    let mut config = StreamableHttpServerConfig::default();
+    if let Ok(host) = std::env::var("PROTON_MCP_ALLOWED_HOST") {
+        anyhow::ensure!(
+            !host.is_empty() && !host.contains('/') && !host.contains('*'),
+            "allowed host must be an exact authority"
+        );
+        config.allowed_hosts.push(host);
+    }
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),
         Arc::new(LocalSessionManager::default()),
-        Default::default(),
+        config,
     );
-    let app = axum::Router::new().nest_service("/mcp", service);
+    let app = axum::Router::new().nest_service("/mcp", service).layer(
+        axum::middleware::from_fn_with_state(token, crate::http_auth::authorize),
+    );
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
     Ok(())
@@ -230,7 +252,7 @@ mod tests {
         assert!(should_perform(false, Some(true)));
         // --allow-writes performs regardless of confirm.
         assert!(should_perform(true, None));
-        assert!(should_perform(true, Some(false)));
+        assert!(!should_perform(true, Some(false)));
     }
 
     #[test]
