@@ -82,6 +82,12 @@ For clients needing stdio, `stdio-proxy.py --url https://.../mcp --token-file /p
 provides a dependency-free serial adapter. It does not follow HTTP redirects and
 does not expose the token in process arguments. This server does not use MCP
 sampling or elicitation callbacks; the adapter is intended for this service.
+If the server discards an MCP transport session (HTTP 404), the adapter repeats
+the initialization handshake and retries that rejected request once. This does
+not log into Proton again. Authorization failures, timeouts and other server
+errors are not retried, so an uncertain send is never automatically repeated.
+Run `python3 -m unittest discover -s deploy -p 'test_stdio_proxy.py'` to check
+session recovery and the no-retry conditions.
 
 The MCP server can start and advertise tools before Proton authentication is
 available. A successful initialize/tools-list exchange is not a mailbox health
